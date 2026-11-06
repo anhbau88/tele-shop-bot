@@ -1,6 +1,9 @@
 node_modules/
 .env
 shop.db
+*.session
+*.session-journal
+userbot/history.json
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

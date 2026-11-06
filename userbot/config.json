@@ -1,0 +1,9 @@
+{
+  "api_id": 35489005,
+  "api_hash": "b772aea6df245d6d52542c2396c62b92",
+  "bot_username": "botbanac69_bot",
+  "send_mode": "DM",
+  "min_delay_seconds": 15,
+  "max_delay_seconds": 35,
+  "max_messages_per_day": 25
+}
