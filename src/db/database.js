@@ -69,6 +69,15 @@ function initDb() {
       FOREIGN KEY (product_id) REFERENCES products(id)
     );
 
+    CREATE TABLE IF NOT EXISTS contacted_leads (
+      user_id INTEGER PRIMARY KEY,
+      username TEXT,
+      category TEXT,
+      message_sent TEXT,
+      sent_date TEXT,
+      created_at TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_stock_prod_avail ON stock_items (product_id, is_sold, reserved_until);
     CREATE INDEX IF NOT EXISTS idx_orders_code ON orders (order_code);
     CREATE INDEX IF NOT EXISTS idx_orders_user ON orders (user_id);
@@ -364,6 +373,26 @@ function getRevenueStats() {
   };
 }
 
+function isLeadContacted(userId) {
+  const row = db.prepare('SELECT user_id FROM contacted_leads WHERE user_id = ?').get(userId);
+  return !!row;
+}
+
+function getTodayLeadCount() {
+  const today = new Date().toISOString().slice(0, 10);
+  const row = db.prepare('SELECT COUNT(*) as count FROM contacted_leads WHERE sent_date = ?').get(today);
+  return row ? row.count : 0;
+}
+
+function recordContactedLead(userId, username, category, messageSent) {
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  db.prepare(`
+    INSERT OR REPLACE INTO contacted_leads (user_id, username, category, message_sent, sent_date, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(userId, username || '', category || '', messageSent, today, now.toISOString());
+}
+
 module.exports = {
   db,
   initDb,
@@ -383,5 +412,8 @@ module.exports = {
   getUserOrders,
   addStock,
   getAllProductsForAdmin,
-  getRevenueStats
+  getRevenueStats,
+  isLeadContacted,
+  getTodayLeadCount,
+  recordContactedLead
 };

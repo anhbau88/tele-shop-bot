@@ -27,6 +27,7 @@ const {
   sendStockNotification
 } = require('./handlers/admin');
 const { handleGroupMessage } = require('./handlers/groupScanner');
+const { startUserbot } = require('./userbot/client');
 
 if (!config.BOT_TOKEN) {
   console.error('❌ Lỗi: Chưa cung cấp BOT_TOKEN trong file .env!');
@@ -269,3 +270,6 @@ bot.start({
     console.log(`======================================================\n`);
   }
 });
+
+// Khởi chạy Userbot tự động quét khách 24/7 trên Cloud (nếu có StringSession)
+startUserbot();
