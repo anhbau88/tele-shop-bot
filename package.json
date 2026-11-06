@@ -1,0 +1,14 @@
+{
+  "name": "tele-shop-bot",
+  "version": "1.0.0",
+  "description": "Telegram Shop Bot for AI Accounts with Direct VietQR Payment",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "grammy": "^1.46.0"
+  }
+}
