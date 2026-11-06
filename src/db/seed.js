@@ -1,14 +1,71 @@
 const { db, initDb, addStock } = require('./database');
 
-function seedData() {
-  initDb();
+function getRandomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 
-  const catCount = db.prepare('SELECT COUNT(*) as count FROM categories').get().count;
-  if (catCount > 0) {
-    return;
+function getRandomString(length = 6) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let res = '';
+  for (let i = 0; i < length; i++) {
+    res += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return res;
+}
+
+/**
+ * Sinh danh sách tài khoản / key ảo số lượng lớn theo chuẩn định dạng từng loại sản phẩm
+ */
+function generateVirtualAccounts(productName, count) {
+  const accounts = [];
+  const nameLower = productName.toLowerCase();
+
+  for (let i = 1; i <= count; i++) {
+    const num = String(getRandomInt(1000, 9999));
+    const token = getRandomString(8);
+
+    if (nameLower.includes('dùng chung') && nameLower.includes('chatgpt')) {
+      accounts.push(`gpt.share_${num}@fastmail.ai|PlusPass@${num}|2FA: ${token}`);
+    } else if (nameLower.includes('chính chủ') && nameLower.includes('chatgpt')) {
+      accounts.push(`KEY-OPENAI-PLUS-UPGRADE-${num}-${token}`);
+    } else if (nameLower.includes('free') && nameLower.includes('gmail')) {
+      accounts.push(`gpt.user${num}@gmail.com|PassGpt#${num}|backup${num}@outlook.com`);
+    } else if (nameLower.includes('gemini') && nameLower.includes('6 tháng')) {
+      accounts.push(`https://families.google.com/join/invite/GEMINI-6M-${num}-${token}`);
+    } else if (nameLower.includes('gemini') && (nameLower.includes('12') || nameLower.includes('1 năm'))) {
+      accounts.push(`https://families.google.com/join/invite/GOOGLE-ONE-1Y-${num}-${token}`);
+    } else if (nameLower.includes('claude') && nameLower.includes('dùng chung')) {
+      accounts.push(`claude.pro_${num}@cloudmail.org|ClaudePass@${num}`);
+    } else if (nameLower.includes('claude') && nameLower.includes('riêng')) {
+      accounts.push(`claude.solo_${num}@anthropic-vip.com|SonnetPass#${num}`);
+    } else if (nameLower.includes('cursor') && nameLower.includes('premium')) {
+      accounts.push(`cursor.dev_${num}@codehub.io|DevPass@${num}|FastReq: 500`);
+    } else if (nameLower.includes('copilot')) {
+      accounts.push(`COPILOT-STUDENT-PRO-1Y-${num}-${token}`);
+    } else if (nameLower.includes('grok') && nameLower.includes('dùng chung')) {
+      accounts.push(`x_grok_${num}|PassX@${num}|Auth2FA: ${token}`);
+    } else if (nameLower.includes('grok') && nameLower.includes('cấp sẵn')) {
+      accounts.push(`super_grok_${num}@xmail.com|GrokPass#${num}|Token: ${token}`);
+    } else if (nameLower.includes('combo')) {
+      accounts.push(`[Grok: grok_cb${num}|Pass123] + [Cursor: cursor_cb${num}|Pass456]`);
+    } else if (nameLower.includes('x premium')) {
+      accounts.push(`KEY-UPGRADE-X-PREMIUM-GROK-${num}-${token}`);
+    } else if (nameLower.includes('capcut')) {
+      accounts.push(`capcut.vip_${num}@media-net.vn|CapcutPass@${num}`);
+    } else if (nameLower.includes('canva') && nameLower.includes('1 năm')) {
+      accounts.push(`https://www.canva.com/brand/join?invite_token=CANVA-PRO-1Y-${num}-${token}`);
+    } else if (nameLower.includes('canva') && nameLower.includes('vĩnh viễn')) {
+      accounts.push(`https://www.canva.com/brand/join?invite_token=CANVA-LIFETIME-${num}-${token}`);
+    } else {
+      accounts.push(`vip.account_${num}@digital-store.com|Pass@${num}`);
+    }
   }
 
-  console.log('🌱 Đang tạo danh mục và sản phẩm mẫu với bảng giá mới nhất...');
+  return accounts;
+}
+
+function seedData() {
+  initDb();
 
   const categories = [
     { name: 'ChatGPT / OpenAI', icon: '🟢', sort_order: 1 },
@@ -19,13 +76,24 @@ function seedData() {
     { name: 'Design & Media AI', icon: '🎨', sort_order: 6 }
   ];
 
-  const insertCat = db.prepare('INSERT INTO categories (name, icon, sort_order) VALUES (?, ?, ?)');
+  const catCount = db.prepare('SELECT COUNT(*) as count FROM categories').get().count;
   const catIds = {};
-  for (const cat of categories) {
-    const res = insertCat.run(cat.name, cat.icon, cat.sort_order);
-    catIds[cat.name] = res.lastInsertRowid;
+
+  if (catCount === 0) {
+    console.log('🌱 Đang tạo danh mục AI lớn...');
+    const insertCat = db.prepare('INSERT INTO categories (name, icon, sort_order) VALUES (?, ?, ?)');
+    for (const cat of categories) {
+      const res = insertCat.run(cat.name, cat.icon, cat.sort_order);
+      catIds[cat.name] = res.lastInsertRowid;
+    }
+  } else {
+    const existingCats = db.prepare('SELECT id, name FROM categories').all();
+    for (const c of existingCats) {
+      catIds[c.name] = c.id;
+    }
   }
 
+  // Cấu hình các sản phẩm kèm số lượng tài khoản ảo nạp sẵn vào kho
   const products = [
     // 1. ChatGPT
     {
@@ -35,13 +103,7 @@ function seedData() {
       pricingType: 'MONTHLY',
       desc: 'Tài khoản ChatGPT Plus dùng chung 1-2 người ổn định, đầy đủ GPT-4o, o1, Canvas, DALL-E.',
       warranty: 'Bảo hành full thời gian gói (1 đổi 1)',
-      stock: [
-        'gpt_share_01@demo.ai|PassShare@123',
-        'gpt_share_02@demo.ai|PassShare@123',
-        'gpt_share_03@demo.ai|PassShare@123',
-        'gpt_share_04@demo.ai|PassShare@123',
-        'gpt_share_05@demo.ai|PassShare@123'
-      ]
+      targetStock: 150
     },
     {
       cat: 'ChatGPT / OpenAI',
@@ -50,11 +112,7 @@ function seedData() {
       pricingType: 'MONTHLY',
       desc: 'Nâng trực tiếp trên email chính chủ của bạn. Dùng riêng tư 100%, bảo lưu lịch sử chat.',
       warranty: 'Bảo hành trọn đời gói đăng ký',
-      stock: [
-        'KEY-PLUS-INVITE-01-VIP',
-        'KEY-PLUS-INVITE-02-VIP',
-        'KEY-PLUS-INVITE-03-VIP'
-      ]
+      targetStock: 80
     },
     {
       cat: 'ChatGPT / OpenAI',
@@ -63,16 +121,10 @@ function seedData() {
       pricingType: 'FIXED',
       desc: 'Tài khoản OpenAI Free tạo sẵn kèm Gmail riêng, chưa add số điện thoại.',
       warranty: 'Bảo hành đăng nhập lần đầu',
-      stock: [
-        'gpt_free_01@gmail.com|DemoMailPass@1|recovery@mail.com',
-        'gpt_free_02@gmail.com|DemoMailPass@2|recovery@mail.com',
-        'gpt_free_03@gmail.com|DemoMailPass@3|recovery@mail.com',
-        'gpt_free_04@gmail.com|DemoMailPass@4|recovery@mail.com',
-        'gpt_free_05@gmail.com|DemoMailPass@5|recovery@mail.com'
-      ]
+      targetStock: 300
     },
 
-    // 2. Gemini Pro (Theo đúng yêu cầu: 6T = 200k, 12T = 390k, bỏ Gemini Advanced)
+    // 2. Gemini Pro
     {
       cat: 'Google Gemini Pro',
       name: 'Google Gemini Pro 2.0 (Slot 6 Tháng)',
@@ -80,11 +132,7 @@ function seedData() {
       pricingType: 'FIXED',
       desc: 'Slot gia đình Google One + Gemini Advanced 2.0 Pro / Ultra thời hạn 6 tháng.',
       warranty: 'Bảo hành full thời gian 6 tháng',
-      stock: [
-        'INVITE-GEMINI-6M-SLOT01',
-        'INVITE-GEMINI-6M-SLOT02',
-        'INVITE-GEMINI-6M-SLOT03'
-      ]
+      targetStock: 100
     },
     {
       cat: 'Google Gemini Pro',
@@ -93,14 +141,10 @@ function seedData() {
       pricingType: 'FIXED',
       desc: 'Slot gia đình Google One 2TB - 5TB + Gemini Advanced 2.0 Pro / Ultra 12 tháng.',
       warranty: 'Bảo hành full thời gian 12 tháng',
-      stock: [
-        'INVITE-GEMINI-1Y-SLOT01',
-        'INVITE-GEMINI-1Y-SLOT02',
-        'INVITE-GEMINI-1Y-SLOT03'
-      ]
+      targetStock: 100
     },
 
-    // 3. Claude AI (Rẻ hơn thị trường 10k)
+    // 3. Claude AI
     {
       cat: 'Claude AI Anthropic',
       name: 'Claude Pro 1 Tháng (Dùng chung)',
@@ -108,11 +152,7 @@ function seedData() {
       pricingType: 'MONTHLY',
       desc: 'Tài khoản Claude Pro dùng chung ổn định, truy cập không giới hạn Claude 3.5 Sonnet & Haiku.',
       warranty: 'Bảo hành 1 đổi 1 full thời gian',
-      stock: [
-        'claude_share_01@demo.ai|ClaudePass@123',
-        'claude_share_02@demo.ai|ClaudePass@123',
-        'claude_share_03@demo.ai|ClaudePass@123'
-      ]
+      targetStock: 120
     },
     {
       cat: 'Claude AI Anthropic',
@@ -121,13 +161,10 @@ function seedData() {
       pricingType: 'MONTHLY',
       desc: 'Tài khoản Claude Pro cấp sẵn riêng tư 1 người hoặc nâng chính chủ email của bạn.',
       warranty: 'Bảo hành 1 đổi 1 suốt thời gian gói',
-      stock: [
-        'claude_solo_01@demo.ai|ClaudeSoloPass@1',
-        'claude_solo_02@demo.ai|ClaudeSoloPass@2'
-      ]
+      targetStock: 80
     },
 
-    // 4. Cursor & Code AI (Rẻ hơn thị trường 10k)
+    // 4. Cursor & Code AI
     {
       cat: 'Cursor & Code AI',
       name: 'Cursor Pro Premium (500 Fast Requests)',
@@ -135,11 +172,7 @@ function seedData() {
       pricingType: 'MONTHLY',
       desc: 'Tài khoản Cursor Pro đầy đủ 500 Fast Requests GPT-4o / Claude 3.5 Sonnet.',
       warranty: 'Bảo hành 1 đổi 1',
-      stock: [
-        'cursor_pro_01@code.ai|CursorPass@123',
-        'cursor_pro_02@code.ai|CursorPass@123',
-        'cursor_pro_03@code.ai|CursorPass@123'
-      ]
+      targetStock: 150
     },
     {
       cat: 'Cursor & Code AI',
@@ -148,13 +181,10 @@ function seedData() {
       pricingType: 'FIXED',
       desc: 'Kích hoạt GitHub Copilot trên chính tài khoản GitHub của bạn trong 1 năm.',
       warranty: 'Bảo hành 12 tháng',
-      stock: [
-        'KEY-COPILOT-1Y-01',
-        'KEY-COPILOT-1Y-02'
-      ]
+      targetStock: 80
     },
 
-    // 5. Super Grok / xAI (Bổ sung đa dạng các gói Super Grok, rẻ hơn thị trường 10k)
+    // 5. Super Grok
     {
       cat: 'Super Grok / xAI',
       name: 'Super Grok 2 (Dùng chung)',
@@ -162,10 +192,7 @@ function seedData() {
       pricingType: 'MONTHLY',
       desc: 'Tài khoản Grok 2 dùng chung tiết kiệm, truy cập mô hình xAI Grok 2 & Grok 2 Mini.',
       warranty: 'Bảo hành 1 đổi 1',
-      stock: [
-        'grok_share_01|PassGrok@1|Auth2FA',
-        'grok_share_02|PassGrok@2|Auth2FA'
-      ]
+      targetStock: 120
     },
     {
       cat: 'Super Grok / xAI',
@@ -174,10 +201,7 @@ function seedData() {
       pricingType: 'MONTHLY',
       desc: 'Tài khoản riêng biệt 1 người dùng, tích hợp X Premium + Grok 2 không kiểm duyệt hình ảnh.',
       warranty: 'Bảo hành trọn đời gói',
-      stock: [
-        'grok_solo_01|PassGrokSolo@1|Auth2FA',
-        'grok_solo_02|PassGrokSolo@2|Auth2FA'
-      ]
+      targetStock: 80
     },
     {
       cat: 'Super Grok / xAI',
@@ -186,10 +210,7 @@ function seedData() {
       pricingType: 'FIXED',
       desc: 'Combo hoàn hảo cho Lập trình viên: 1 acc Grok 2 + 1 acc Cursor Pro tốc độ cao.',
       warranty: 'Bảo hành 30 ngày',
-      stock: [
-        'COMBO-GROK-CURSOR-PACK-01',
-        'COMBO-GROK-CURSOR-PACK-02'
-      ]
+      targetStock: 60
     },
     {
       cat: 'Super Grok / xAI',
@@ -198,13 +219,10 @@ function seedData() {
       pricingType: 'MONTHLY',
       desc: 'Nâng gói X Premium tích hợp Grok 2 trực tiếp lên tài khoản Twitter/X của bạn.',
       warranty: 'Bảo hành theo thời hạn đăng ký',
-      stock: [
-        'KEY-UPGRADE-GROK-X-01',
-        'KEY-UPGRADE-GROK-X-02'
-      ]
+      targetStock: 60
     },
 
-    // 6. Design & Media AI (Rẻ hơn thị trường 10k)
+    // 6. Design & Media AI
     {
       cat: 'Design & Media AI',
       name: 'Capcut Pro Cá Nhân (Không văng, full VIP)',
@@ -212,11 +230,7 @@ function seedData() {
       pricingType: 'MONTHLY',
       desc: 'Tài khoản CapCut Pro cá nhân mở khóa toàn bộ kho hiệu ứng, template và AI Video.',
       warranty: 'Bảo hành 1 đổi 1 suốt thời gian gói',
-      stock: [
-        'capcut_01@media.com|CapcutPass@1',
-        'capcut_02@media.com|CapcutPass@2',
-        'capcut_03@media.com|CapcutPass@3'
-      ]
+      targetStock: 180
     },
     {
       cat: 'Design & Media AI',
@@ -225,10 +239,7 @@ function seedData() {
       pricingType: 'FIXED',
       desc: 'Mời vào nhóm bản quyền Canva Pro trên chính email của bạn thời hạn 1 năm.',
       warranty: 'Bảo hành 1 năm',
-      stock: [
-        'CANVA-INVITE-1Y-01',
-        'CANVA-INVITE-1Y-02'
-      ]
+      targetStock: 200
     },
     {
       cat: 'Design & Media AI',
@@ -237,27 +248,41 @@ function seedData() {
       pricingType: 'FIXED',
       desc: 'Mời vào nhóm bản quyền Canva Pro dùng vĩnh viễn không giới hạn.',
       warranty: 'Bảo hành trọn đời tài khoản',
-      stock: [
-        'CANVA-INVITE-LIFETIME-01',
-        'CANVA-INVITE-LIFETIME-02'
-      ]
+      targetStock: 200
     }
   ];
-
-  const insertProd = db.prepare(`
-    INSERT INTO products (category_id, name, price_vnd, pricing_type, description, warranty_info, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `);
 
   let pOrder = 1;
   for (const p of products) {
     const catId = catIds[p.cat];
-    const res = insertProd.run(catId, p.name, p.price, p.pricingType, p.desc, p.warranty, pOrder++);
-    const prodId = res.lastInsertRowid;
-    addStock(prodId, p.stock);
+    let existingProd = db.prepare('SELECT id FROM products WHERE name = ?').get(p.name);
+    let prodId = null;
+
+    if (!existingProd) {
+      const res = db.prepare(`
+        INSERT INTO products (category_id, name, price_vnd, pricing_type, description, warranty_info, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(catId, p.name, p.price, p.pricingType, p.desc, p.warranty, pOrder++);
+      prodId = res.lastInsertRowid;
+    } else {
+      prodId = existingProd.id;
+    }
+
+    // Đếm tồn kho hiện tại
+    const currentStock = db.prepare(`
+      SELECT COUNT(*) as count FROM stock_items WHERE product_id = ? AND is_sold = 0
+    `).get(prodId).count;
+
+    // Nếu tồn kho còn ít (< targetStock), tự động sinh thêm cho đầy ắp kho
+    if (currentStock < p.targetStock) {
+      const needed = p.targetStock - currentStock;
+      const virtualAccs = generateVirtualAccounts(p.name, needed);
+      addStock(prodId, virtualAccs);
+    }
   }
 
-  console.log('✅ Khởi tạo dữ liệu mẫu với bảng giá mới thành công!');
+  const totalStock = db.prepare('SELECT COUNT(*) as count FROM stock_items WHERE is_sold = 0').get().count;
+  console.log(`✅ Kho hàng đã được nạp đầy ắp: TỔNG CỘNG ${totalStock} TÀI KHOẢN VÀ KEY KHẢ DỤNG!`);
 }
 
 module.exports = { seedData };
