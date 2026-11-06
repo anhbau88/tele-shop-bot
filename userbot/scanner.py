@@ -20,19 +20,32 @@ config = load_config()
 api_id = config.get("api_id")
 api_hash = config.get("api_hash")
 bot_username = config.get("bot_username", "botbanac69_bot")
-send_mode = config.get("send_mode", "DM")  # DM hoặc REPLY hoặc BOTH
+send_mode = config.get("send_mode", "DM")
 min_delay = config.get("min_delay_seconds", 15)
 max_delay = config.get("max_delay_seconds", 35)
 max_daily = config.get("max_messages_per_day", 25)
 
 if not api_id or not api_hash:
-    print("\n" + "="*60)
-    print("❌ LỖI: Chưa điền api_id và api_hash trong file userbot/config.json!")
-    print("👉 Hãy truy cập https://my.telegram.org -> API development tools để lấy miễn phí.")
-    print("="*60 + "\n")
+    print("❌ Chưa cấu hình api_id và api_hash trong config.json!")
     sys.exit(1)
 
-# Các mẫu tin nhắn chuẩn dân buôn - Cộc, ngắn, không thảo mai
+# Danh sách từ khóa người bán -> Loại bỏ ngay
+SELLER_REGEX = re.compile(
+    r'bên em|em bán|shop em|sẵn kho|sẵn acc|xả kho|xả hàng|bảng giá|cung cấp|nhận nâng|nhận nạp|'
+    r'bảo hành full|1 đổi 1|zalo|t\.me\/|tele:|lh:|liên hệ:|feedback|tri ân|khuyến mãi|sỉ lẻ|giá sỉ|'
+    r'tuyển sỉ|tồn kho|bác nào cần ib|ai cần ib|ai cần dm|ai cần nhắn|ib shop|inbox shop|chuyên cung cấp|chính chủ giá',
+    re.IGNORECASE
+)
+
+# Danh sách từ khóa người mua -> Bắt buộc phải có
+BUYER_REGEX = re.compile(
+    r'cần\s*(mua|tìm|acc|tài\s*khoản|slot|key)|tìm\s*(mua|acc|tài\s*khoản|slot)|'
+    r'ai\s*(bán|có|còn|nhận|pass)|có\s*ai\s*(bán|có|nhận|pass)|bác\s*nào\s*(bán|có|pass)|'
+    r'ông\s*nào\s*(bán|có)|shop\s*nào\s*(bán|có)|xin\s*giá|giá\s*sao|bao\s*nhiêu|nhiêu\s*tiền|'
+    r'nhiêu\s*k|báo\s*giá|ib\s*em|inbox\s*em|dm\s*em|nhắn\s*em|ib\s*mình|inbox\s*mình|mua\s*ở\s*đâu|mua\s*thế\s*nào',
+    re.IGNORECASE
+)
+
 MESSAGE_TEMPLATES = {
     "CHATGPT": [
         f"Bác cần GPT Plus à, bên em sẵn acc dùng chung 135k / chính chủ 450k nhé. Lấy acc tự động ở đây: @{bot_username}",
@@ -63,86 +76,90 @@ MESSAGE_TEMPLATES = {
     ]
 }
 
-def detect_category(text):
-    t = text.lower()
-    if re.search(r'chat\s*gpt|gpt\s*plus|gpt4|openai|chatgpt', t):
+def detect_buyer_category(text):
+    if not text:
+        return None
+    t = text.strip()
+
+    # 1. Bỏ qua người bán
+    if SELLER_REGEX.search(t):
+        return None
+    if len(t) > 200 or t.count('\n') > 3:
+        return None
+
+    # 2. Phải có ý định mua
+    has_buyer_intent = bool(BUYER_REGEX.search(t)) or ('?' in t and re.search(r'có\s*(ko|không)|được\s*(ko|không)', t, re.I))
+    if not has_buyer_intent:
+        return None
+
+    # 3. Phân loại sản phẩm
+    lower = t.lower()
+    if re.search(r'chat\s*gpt|gpt\s*plus|gpt4|openai|chatgpt', lower):
         return "CHATGPT"
-    elif re.search(r'gemini|gemini\s*pro|gemini\s*advanced|google\s*ai|google\s*one', t):
+    elif re.search(r'gemini|gemini\s*pro|gemini\s*advanced|google\s*ai|google\s*one', lower):
         return "GEMINI"
-    elif re.search(r'claude|claude\s*pro|sonnet|anthropic', t):
+    elif re.search(r'claude|claude\s*pro|sonnet|anthropic', lower):
         return "CLAUDE"
-    elif re.search(r'cursor|cursor\s*pro|copilot|github\s*copilot', t):
+    elif re.search(r'cursor|cursor\s*pro|copilot|github\s*copilot', lower):
         return "CURSOR"
-    elif re.search(r'grok|super\s*grok|xai|x\s*premium', t):
+    elif re.search(r'grok|super\s*grok|xai|x\s*premium', lower):
         return "GROK"
-    elif re.search(r'capcut|canva', t):
+    elif re.search(r'capcut|canva', lower):
         return "MEDIA"
-    elif re.search(r'mua\s*acc|cần\s*mua|ai\s*bán|ai\s*có\s*acc|tài\s*khoản\s*ai|acc\s*ai|mua\s*tài\s*khoản', t):
-        return "GENERAL"
-    return None
+    return "GENERAL"
 
 session_file = os.path.join(os.path.dirname(__file__), 'userbot_session')
 client = TelegramClient(session_file, api_id, api_hash)
 
 @client.on(events.NewMessage)
 async def message_handler(event):
-    # Chỉ bắt tin nhắn trong các Group / Supergroup
     if not event.is_group:
         return
 
-    # Bỏ qua tin nhắn không có nội dung chữ
     text = event.raw_text
     if not text:
         return
 
-    # Lấy thông tin người gửi
     sender = await event.get_sender()
     if not sender or not isinstance(sender, User):
         return
 
-    # Bỏ qua nếu người gửi là Bot hoặc là chính bản thân mình
     if sender.bot or sender.is_self:
         return
 
     user_id = sender.id
     username = sender.username or f"User_{user_id}"
 
-    # Kiểm tra xem người này đã từng được nhắn trước đây chưa (Chống trùng 100%)
     if storage.is_already_contacted(user_id):
         return
 
-    # Kiểm tra hạn mức gửi tin trong ngày (Chống ban tài khoản)
     today_count = storage.get_today_count()
     if today_count >= max_daily:
-        print(f"⚠️ [GIỚI HẠN] Hôm nay đã gửi đủ {today_count}/{max_daily} khách. Tạm dừng để bảo vệ nick an toàn!")
         return
 
-    # Nhận diện nhu cầu mặt hàng
-    category = detect_category(text)
+    # Lọc thông minh: CHỈ BẮT NGƯỜI MUA
+    category = detect_buyer_category(text)
     if not category:
         return
 
-    # Chọn ngẫu nhiên 1 câu tin nhắn
     templates = MESSAGE_TEMPLATES.get(category, MESSAGE_TEMPLATES["GENERAL"])
     msg_to_send = random.choice(templates)
 
-    # Delay ngẫu nhiên giống người thật (15 - 35 giây)
     delay = random.uniform(min_delay, max_delay)
     chat = await event.get_chat()
     chat_title = getattr(chat, 'title', 'Nhóm ẩn')
 
-    print(f"\n🎯 [PHÁT HIỆN KHÁCH] Group: '{chat_title}' | Người gửi: @{username}")
-    print(f"   💬 Khách chat: \"{text[:60]}...\"")
-    print(f"   ⏳ Đang chờ {delay:.1f} giây trước khi gửi (giả lập người thật)...")
+    print(f"\n🎯 [PHÁT HIỆN KHÁCH THẬT] Group: '{chat_title}' | Người gửi: @{username}")
+    print(f"   💬 Khách hỏi: \"{text[:60]}...\"")
+    print(f"   ⏳ Đang chờ {delay:.1f} giây trước khi gửi...")
 
     await asyncio.sleep(delay)
 
-    # Thực hiện gửi tin
     sent_success = False
     try:
         if send_mode in ["DM", "BOTH"]:
             await client.send_message(user_id, msg_to_send)
-            print(f"   ✅ [ĐÃ INBOX RIÊNG] Tới @{username}: \"{msg_to_send}\"")
+            print(f"   ✅ [ĐÃ INBOX] Tới @{username}: \"{msg_to_send}\"")
             sent_success = True
 
         if send_mode in ["REPLY", "BOTH"]:
@@ -151,7 +168,6 @@ async def message_handler(event):
             sent_success = True
 
         if sent_success:
-            # Ghi nhớ lịch sử để không bao giờ nhắn lại
             storage.record_contact(user_id, username, msg_to_send, category)
             print(f"   📊 Tiến độ hôm nay: {storage.get_today_count()}/{max_daily} khách.")
 
@@ -159,10 +175,9 @@ async def message_handler(event):
         print(f"   ❌ [GỬI THẤT BẠI] Lỗi: {e}")
 
 print("\n" + "="*60)
-print("🚀 TELEGRAM USERBOT QUÉT KHÁCH ĐÃ KHỞI ĐỘNG!")
+print("🚀 TELEGRAM USERBOT QUÉT KHÁCH ĐÃ KHỞI ĐỘNG (BỘ LỌC THÔNG MINH)!")
+print("🛡️ ĐÃ BẬT BỘ LỌC: CHỈ QUÉT NGƯỜI MUA, LOẠI BỎ 100% NGƯỜI BÁN!")
 print(f"🤖 Bot bán hàng điều hướng: @{bot_username}")
-print(f"🛡️ Chế độ gửi: {send_mode} (Giới hạn: {max_daily} khách/ngày)")
-print("👉 Đang lắng nghe tin nhắn trong tất cả các nhóm mà nick tham gia...")
 print("="*60 + "\n")
 
 client.start()
