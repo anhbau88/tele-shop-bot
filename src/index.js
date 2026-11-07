@@ -255,6 +255,14 @@ server.listen(PORT, () => {
   console.log(`🌐 Server Healthcheck cổng ${PORT} sẵn sàng cho Render/Koyeb.`);
 });
 
+// Tự động Ping để giữ Render không bị Sleep (Keep-Alive mỗi 9 phút)
+const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL || 'https://botbanacc69.onrender.com';
+setInterval(() => {
+  fetch(RENDER_EXTERNAL_URL)
+    .then(() => console.log(`[Keep-Alive] Đã ping ${RENDER_EXTERNAL_URL} giữ server thức 24/7.`))
+    .catch((err) => console.error('[Keep-Alive] Lỗi ping:', err.message));
+}, 9 * 60 * 1000);
+
 // ==================== KHỞI CHẠY BOT ====================
 
 console.log('⏳ Đang kết nối Bot Telegram...');
